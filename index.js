@@ -1,88 +1,56 @@
+// for creating folders, saving files on the harddrive
 const fs = require('fs');
-var https = require('https');
+// for searching in a downloaded html document
+const cheerio = require('cheerio');
+// for sending requests (to download) text (html) or binary (image) data
+const axios = require('axios');
 
-let picturesArray = []; //geht es wenn definiert hier?
+// create a folder and wait until it exist
+fs.mkdirSync('memes');
 
-// sagt dem Request, welche Web-Adresse abgefragt werden soll
-var options = {
-  host: 'memegen-link-examples-upleveled.netlify.app',
-  path: '/',
+// delcare a function that downloads a file and saves it to the harddrive
+const saveImage = (imageUrl) => {
+  // given a url, extract the file name
+  // imagine urls are formatted like https://bblablalba.com/images/dog.jpg?width=300
+  // then the file name is everything after the last / and the last ? in the url
+  const fileName = imageUrl.slice(
+    imageUrl.lastIndexOf('/') + 1,
+    imageUrl.lastIndexOf('?'),
+  );
+
+  // tell axios to read that url as a binary stream (it's important to read images as a binary stream rather than text - it wouldn't look right if you opened the image)
+  axios({
+    method: 'get',
+    url: imageUrl,
+    responseType: 'stream',
+  }).then((response) => {
+    // write the data stream to the folder that was previously created; use only the file name, not the whole url, as the target name
+    response.data.pipe(fs.createWriteStream('memes/' + fileName));
+  });
 };
 
-var request = https.request(options, function (res) {
-  var data = '';
+// connect to the page with memes on it
+axios.get('https://memegen-link-examples-upleveled.netlify.app').then(
+  (response) => {
+    // status should be HTTP code 200 which means the connection was successful
+    if (response.status === 200) {
+      // response from the server is in response.data - that is the html document we have just requested
+      const html = response.data;
+      // now use cheerio to turn that html string into an object that can be searched, filtered, etc. - it's way more convenient to use cheerio than to your own searching in a huge string
+      const $ = cheerio.load(html);
 
-  // 'data' liefert das nächste Datenpaket in 'chunk'
-  res.on('data', function (chunk) {
-    //there is a response
-    data += chunk;
-  });
+      // now ask cheero (which is $) to return all images
+      $('img').each((i, elem) => {
+        // every image has a number, consider only 0 - 9, skip the rest
+        if (i >= 10) return;
 
-  // 'end' sagt, dass der Datenstrom zu Ende ist
-  //let picturesArray = []; geht es, wenn definiert hier?
-  res.on('end', function () {
-    let currentStart = 0;
-    //let picturesArray = [];
-
-    for (let counter = 0; counter < 10; counter++) {
-      let startIndexImg = data.indexOf('img src="', currentStart) + 9;
-      let endIndexImg = data.indexOf('"', startIndexImg);
-
-      let imageData = data.slice(startIndexImg, endIndexImg);
-      currentStart = endIndexImg;
-      //console.log(imageData);
-      picturesArray.push(imageData);
+        // for every image, read it's src attribute, i.e., the image file url
+        const imageUrl = $(elem).attr('src');
+        // now call the previously defined function to download the image
+        saveImage(imageUrl);
+      });
     }
-    console.log(picturesArray);
-  });
-});
-
-request.on('error', function (e) {
-  console.log(e.message);
-});
-request.end();
-
-const memesDir = './memes';
-fs.mkdir(memesDir, (err) => {
-  if (err) {
-    throw err;
-  }
-  console.log('Directory is created');
-});
-
-/*
-habe auch sowas gefunden:
-var fs = require("fs");
-
-var data = "New File Contents";
-
-fs.writeFile("temp.txt", data, (err) => {
-  if (err) console.log(err);
-  console.log("Successfully Written to File.");
-});
-Run this code by executing node write.js in the terminal and then open up temp.txt in your editor, you should now see the new contents of the file.
-
-so this works and the picture goes into the file
-
-https.get(
-  'https://api.memegen.link/images/keanu.jpg?width=300',
-  function (res) {
-    res.on('data', function (chunk) {
-      console.log(chunk); //chunk is here numbers etc image-data
-      fs.writeFile('./meme/img1.jpg', chunk, function () {
-        console.log('created');
-      });
-    });
   },
+  // if anything fails in the request, this part is called
+  (err) => console.log(err),
 );
-*/
-for (let i = 0; i < picturesArray.length; i++) {
-  https.get(picturesArray[i], function (res) {
-    res.on('data', function (chunk) {
-      //console.log(chunk); //chunk is here numbers etc image-data
-      fs.writeFile('./meme/img1.jpg', chunk, function () {
-        console.log('created');
-      });
-    });
-  });
-}
